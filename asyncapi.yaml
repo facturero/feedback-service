@@ -1,0 +1,76 @@
+asyncapi: 2.6.0
+info:
+  title: feedback-service — eventos
+  version: 1.0.0
+  description: |
+    Eventos del buzón de comentarios y mejoras (outbox con @facturero/outbox-relay, exchange `crm.events`). NO llevan el texto de lo que
+    escribió la persona ni de las respuestas: la bitácora de auditoría guarda los payloads. `userIds` = a quién avisar (campana y correo
+    de notification-service): la persona autora, nunca quien hizo la acción. Actor, IP y request-id los añade el relay.
+
+channels:
+  feedback.item.created:
+    description: Alguien mandó una mejora, un comentario o un reporte de problema.
+    publish:
+      message: { $ref: '#/components/messages/ItemCreated' }
+  feedback.reply.created:
+    description: Nueva respuesta en una conversación (del dueño de la plataforma o de la persona).
+    publish:
+      message: { $ref: '#/components/messages/ReplyCreated' }
+  feedback.item.status_changed:
+    description: El dueño cambió el estado (en revisión, aceptada, implementada, descartada).
+    publish:
+      message: { $ref: '#/components/messages/StatusChanged' }
+  feedback.points.granted:
+    description: Puntos de fidelidad a una empresa (por una mejora o un ajuste manual, que puede ser negativo).
+    publish:
+      message: { $ref: '#/components/messages/PointsGranted' }
+
+components:
+  messages:
+    ItemCreated:
+      payload: { $ref: '#/components/schemas/ItemCreated' }
+    ReplyCreated:
+      payload: { $ref: '#/components/schemas/ReplyCreated' }
+    StatusChanged:
+      payload: { $ref: '#/components/schemas/StatusChanged' }
+    PointsGranted:
+      payload: { $ref: '#/components/schemas/PointsGranted' }
+  schemas:
+    ItemRef:
+      type: object
+      required: [itemId, organizationId, kind, authorId, userIds]
+      properties:
+        itemId: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        kind: { type: string, enum: [improvement, comment, problem] }
+        authorId: { type: string, format: uuid }
+        userIds: { type: array, items: { type: string, format: uuid }, description: 'A quién avisar' }
+    ItemCreated:
+      allOf:
+        - $ref: '#/components/schemas/ItemRef'
+        - type: object
+          properties:
+            status: { type: string, enum: [new] }
+    ReplyCreated:
+      allOf:
+        - $ref: '#/components/schemas/ItemRef'
+        - type: object
+          properties:
+            replyId: { type: string, format: uuid }
+            fromPlatform: { type: boolean }
+    StatusChanged:
+      allOf:
+        - $ref: '#/components/schemas/ItemRef'
+        - type: object
+          properties:
+            previousStatus: { type: string }
+            status: { type: string, enum: [new, reviewing, accepted, implemented, declined] }
+    PointsGranted:
+      type: object
+      required: [organizationId, entryId, amount, userIds]
+      properties:
+        organizationId: { type: string, format: uuid }
+        itemId: { type: string, format: uuid, nullable: true }
+        entryId: { type: string, format: uuid }
+        amount: { type: integer }
+        userIds: { type: array, items: { type: string, format: uuid } }

@@ -1,0 +1,128 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: feedback-service-node
+  labels:
+    app: feedback-service-node
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: feedback-service-node
+  template:
+    metadata:
+      labels:
+        app: feedback-service-node
+    spec:
+      initContainers:
+        - name: feedback-migrate
+          image: ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+          securityContext:
+            runAsUser: 0
+          command:
+            - sh
+            - -c
+            - "sequelize-cli db:migrate"
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: DB_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: feedback-db
+                  key: host
+            - name: DB_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: feedback-db
+                  key: port
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: feedback-db
+                  key: user
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: feedback-db
+                  key: password
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: feedback-db
+                  key: name
+      containers:
+        - name: feedback-service-node
+          image: ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+
+          ports:
+            - containerPort: 3022
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "3022"
+            - name: DB_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: feedback-db
+                  key: host
+            - name: DB_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: feedback-db
+                  key: port
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: feedback-db
+                  key: user
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: feedback-db
+                  key: password
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: feedback-db
+                  key: name
+            - name: RABBITMQ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: feedback-rabbitmq
+                  key: url
+            # Nombre y correo de quien escribe (GET /internal/organizations/:id/contacts de auth, regla 3). El Secret
+            # `internal-service-secret` ya existe en el clúster.
+            - name: AUTH_SERVICE_URL
+              value: "http://auth-service-node:3001"
+            - name: INTERNAL_SERVICE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: internal-service-secret
+                  key: value
+            - name: CORS_ORIGIN
+              value: "https://steep-geology-napping.ngrok-free.dev"
+            - name: OTEL_SERVICE_NAME
+              value: "feedback-service-node"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector.observability.svc.cluster.local:4318"
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "300m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3022
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3022
+            initialDelaySeconds: 5
+            periodSeconds: 10

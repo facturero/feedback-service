@@ -1,0 +1,282 @@
+openapi: 3.0.3
+info:
+  title: feedback-service
+  version: 1.0.0
+  description: |
+    Buzón de comentarios, mejoras y reportes de problemas del CRM, con respuestas del dueño de la plataforma y puntos de fidelidad por
+    empresa. Reglas y decisiones en IMPLEMENTATION.md. En el gateway, una sola regla `ANY /feedback/*` (con sesión).
+
+    Identidad desde las cabeceras del gateway (`X-User-Id`, `X-Organization-Id`, `X-Permissions`). Las rutas `/feedback/admin/*` piden
+    el permiso de plataforma `feedback:manage` (solo `is_platform_admin`). Quien no puede ver un envío recibe 404.
+servers:
+  - url: http://feedback-service-node:3022
+
+paths:
+  /health:
+    get:
+      summary: Salud del servicio
+      security: []
+      responses:
+        '200': { description: OK }
+
+  # ── La persona ───────────────────────────────────────────────────────────
+
+  /feedback:
+    get:
+      summary: Mis envíos, el de actividad más reciente primero
+      parameters:
+        - { in: query, name: cursor, schema: { type: string } }
+        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Item' } }
+                  nextCursor: { type: string, nullable: true }
+    post:
+      summary: Mandar una mejora, un comentario o un reporte de problema (máx. 10 por hora por persona)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, title, body]
+              properties:
+                kind: { type: string, enum: [improvement, comment, problem] }
+                title: { type: string, maxLength: 160 }
+                body: { type: string, maxLength: 4000 }
+                organizationName: { type: string, nullable: true, description: 'Solo para mostrar al dueño (la empresa se identifica por su id)' }
+                traceId: { type: string, nullable: true, description: 'Reportes de problemas: código de traza para cruzarlo con SigNoz' }
+                urlPath: { type: string, nullable: true, description: Pantalla donde estaba }
+      responses:
+        '201': { description: Guardado, content: { application/json: { schema: { $ref: '#/components/schemas/Item' } } } }
+        '422': { $ref: '#/components/responses/Validation' }
+        '429': { description: Demasiados envíos en la última hora }
+
+  /feedback/unread:
+    get:
+      summary: Cuántos de mis envíos tienen novedades (respuesta, estado o puntos) sin leer
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { count: { type: integer } } } } } }
+
+  /feedback/points:
+    get:
+      summary: Saldo y movimientos de puntos de MI empresa (los puntos son de la empresa)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  balance: { type: integer }
+                  entries: { type: array, items: { $ref: '#/components/schemas/PointsEntry' } }
+
+  /feedback/{itemId}:
+    parameters: [{ $ref: '#/components/parameters/itemId' }]
+    get:
+      summary: Uno mío con su conversación y sus puntos (lo marca leído por mi lado)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ItemDetail' } } } }
+        '404': { description: No existe o no es mío }
+
+  /feedback/{itemId}/replies:
+    parameters: [{ $ref: '#/components/parameters/itemId' }]
+    post:
+      summary: Contestar en mi conversación
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [body], properties: { body: { type: string, maxLength: 4000 } } } } }
+      responses:
+        '201': { description: Guardada, content: { application/json: { schema: { $ref: '#/components/schemas/Reply' } } } }
+        '404': { description: No existe o no es mío }
+        '422': { $ref: '#/components/responses/Validation' }
+
+  # ── El dueño de la plataforma (feedback:manage) ─────────────────────────
+
+  /feedback/admin/items:
+    get:
+      summary: Los envíos de todas las empresas, con filtros
+      parameters:
+        - { in: query, name: status, schema: { type: string, enum: [new, reviewing, accepted, implemented, declined] } }
+        - { in: query, name: kind, schema: { type: string, enum: [improvement, comment, problem] } }
+        - { in: query, name: organizationId, schema: { type: string, format: uuid } }
+        - { in: query, name: unread, schema: { type: string, enum: ['true', 'false'] } }
+        - { in: query, name: q, schema: { type: string, maxLength: 200 }, description: 'Busca en título, texto, persona y empresa' }
+        - { in: query, name: cursor, schema: { type: string } }
+        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 100, default: 30 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/PlatformItem' } }
+                  nextCursor: { type: string, nullable: true }
+        '403': { description: Sin el permiso de plataforma }
+
+  /feedback/admin/unread:
+    get:
+      summary: Cuántos envíos no leyó la plataforma
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { count: { type: integer } } } } } }
+        '403': { description: Sin el permiso de plataforma }
+
+  /feedback/admin/suggestions:
+    get:
+      summary: 'Puntos que se sugieren por estado (aceptada 50, implementada 200)'
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { points: { type: object, additionalProperties: { type: integer } } } } } } }
+        '403': { description: Sin el permiso de plataforma }
+
+  /feedback/admin/items/{itemId}:
+    parameters: [{ $ref: '#/components/parameters/itemId' }]
+    get:
+      summary: Cualquier envío, con su conversación y sus puntos (lo marca leído por la plataforma)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PlatformItemDetail' } } } }
+        '403': { description: Sin el permiso de plataforma }
+        '404': { description: No existe }
+
+  /feedback/admin/items/{itemId}/respond:
+    parameters: [{ $ref: '#/components/parameters/itemId' }]
+    post:
+      summary: 'Responder en una sola acción: una respuesta, un cambio de estado y puntos a la empresa (cualquiera de las tres)'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                body: { type: string, nullable: true, maxLength: 4000 }
+                status: { type: string, enum: [new, reviewing, accepted, implemented, declined] }
+                points:
+                  type: object
+                  nullable: true
+                  required: [amount, idempotencyKey]
+                  properties:
+                    amount: { type: integer, minimum: 1 }
+                    reason: { type: string, nullable: true, maxLength: 200, description: 'Sin motivo: «Mejora: <título>»' }
+                    idempotencyKey: { type: string, description: 'Clave del navegador: un doble clic no da los puntos dos veces' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PlatformItemDetail' } } } }
+        '403': { description: Sin el permiso de plataforma }
+        '404': { description: No existe }
+        '422': { $ref: '#/components/responses/Validation' }
+
+  /feedback/admin/points:
+    get:
+      summary: Saldos de puntos por empresa, el mayor primero
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        organizationId: { type: string, format: uuid }
+                        organizationName: { type: string, nullable: true }
+                        balance: { type: integer }
+                        entries: { type: integer }
+        '403': { description: Sin el permiso de plataforma }
+    post:
+      summary: 'Ajuste manual: sumar o restar puntos a una empresa con un motivo (canje, corrección). Idempotente'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [organizationId, amount, reason, idempotencyKey]
+              properties:
+                organizationId: { type: string, format: uuid }
+                amount: { type: integer, description: Distinto de cero; negativo para restar }
+                reason: { type: string, maxLength: 200 }
+                idempotencyKey: { type: string }
+      responses:
+        '201': { description: Hecho, content: { application/json: { schema: { $ref: '#/components/schemas/PointsEntry' } } } }
+        '403': { description: Sin el permiso de plataforma }
+        '422': { $ref: '#/components/responses/Validation' }
+
+components:
+  parameters:
+    itemId: { in: path, name: itemId, required: true, schema: { type: string, format: uuid } }
+  responses:
+    Validation:
+      description: Datos inválidos
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+  schemas:
+    Error:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }
+        status: { type: integer }
+        details: { type: array, items: { type: object, properties: { field: { type: string }, message: { type: string } } } }
+    Item:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [improvement, comment, problem] }
+        title: { type: string }
+        body: { type: string }
+        status: { type: string, enum: [new, reviewing, accepted, implemented, declined] }
+        traceId: { type: string, nullable: true }
+        urlPath: { type: string, nullable: true }
+        replyCount: { type: integer }
+        unread: { type: boolean, description: Sin leer por quien mira }
+        lastActivityAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+    PlatformItem:
+      allOf:
+        - $ref: '#/components/schemas/Item'
+        - type: object
+          properties:
+            organizationId: { type: string, format: uuid }
+            organizationName: { type: string, nullable: true }
+            authorId: { type: string, format: uuid }
+            authorName: { type: string, nullable: true }
+            authorEmail: { type: string, nullable: true }
+    Reply:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        fromPlatform: { type: boolean }
+        authorId: { type: string, format: uuid }
+        body: { type: string }
+        createdAt: { type: string, format: date-time }
+    PointsEntry:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        itemId: { type: string, format: uuid, nullable: true }
+        amount: { type: integer }
+        reason: { type: string }
+        createdAt: { type: string, format: date-time }
+    ItemDetail:
+      type: object
+      properties:
+        item: { $ref: '#/components/schemas/Item' }
+        replies: { type: array, items: { $ref: '#/components/schemas/Reply' } }
+        points: { type: array, items: { $ref: '#/components/schemas/PointsEntry' } }
+    PlatformItemDetail:
+      type: object
+      properties:
+        item: { $ref: '#/components/schemas/PlatformItem' }
+        replies: { type: array, items: { $ref: '#/components/schemas/Reply' } }
+        points: { type: array, items: { $ref: '#/components/schemas/PointsEntry' } }

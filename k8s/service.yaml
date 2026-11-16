@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: feedback-service-node
+  labels:
+    app: feedback-service-node
+spec:
+  type: NodePort
+  selector:
+    app: feedback-service-node
+  ports:
+    - protocol: TCP
+      port: 3022
+      targetPort: 3022
