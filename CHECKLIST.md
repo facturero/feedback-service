@@ -24,13 +24,17 @@ Reglas y decisiones en `IMPLEMENTATION.md`. Marcar al terminar y verificar (no a
 
 ## E3 — Avisos
 
-- [ ] (notification-service) proveedores: respuesta, cambio de estado y puntos → campana y correo a quien escribió
+- [x] (notification-service) proveedores: respuesta, cambio de estado y puntos → campana (las tres) y correo (por defecto solo la respuesta) a quien escribió
+- [x] (api-gateway-node) `feedback.#` en el hub: campana en vivo
+- [x] (frontend) títulos e íconos de la campana, clic al envío, número del menú del avatar en vivo, grupo «Comentarios y mejoras» en preferencias (es/en/fr)
+- [ ] Subir (notification-service, api-gateway-node, frontend) y probar en producción
 - [x] Etiquetas `audit.event.feedback_*` en el frontend es/en/fr (las exige `lint:ui`; la auditoría consume `#` y ya los guarda)
 
 ## E4 — Producción
 
 - [x] El dueño crea el repo `facturero/feedback-service` (rama `main`)
-- [ ] El dueño da acceso de Actions al paquete `outbox-relay` (el CI usa `GITHUB_TOKEN`, sin secreto `NODE_AUTH_TOKEN`) y corre `subir-feedback/preparar-produccion.sh` (base, usuario y `config/secrets.production.enc`)
+- [x] El dueño da acceso de Actions al paquete `outbox-relay` (el CI usa `GITHUB_TOKEN`, sin secreto `NODE_AUTH_TOKEN`) y corre `subir-feedback/preparar-produccion.sh` (base, usuario y `config/secrets.production.enc`)
 - [x] CI (`.github/workflows/deploy.yml`), `k8s/deployment.yaml` + `service.yaml`, `.sops.yaml`
 - [x] Comandos de commit por repo en el orden de despliegue: `cmr-proyect/subir-feedback/SUBIR.md` (conjunta con el chat)
-- [ ] Subida (la hace el dueño) y prueba en producción; el dueño se marca `is_platform_admin`
+- [x] Subida (2026-11-16) y el dueño marcado `is_platform_admin`
+- [ ] Prueba en producción con la sesión del dueño

@@ -9,15 +9,15 @@ entregable. Avance marcable en `CHECKLIST.md`. Contratos: `openapi.yaml` (REST) 
 
 ## Estado (2026-11-16)
 
-En construcción. Nada subido. El repo de GitHub `facturero/feedback-service` existe (vacío, creado por el dueño el 2026-11-16); la
-subida va junto con la del chat: `cmr-proyect/subir-feedback/SUBIR.md`.
+E1, E2 y E4 **en producción** desde el 2026-11-16 (subidos junto con el chat; guía en `cmr-proyect/subir-feedback/SUBIR.md`).
+E3 (avisos) hecho en local el mismo día, sin subir: notification-service, api-gateway-node y frontend.
 
 | Entregable | Estado |
 |---|---|
-| E1 — Servicio, base de datos, API, eventos, pruebas | **Hecho en local** (verificado contra el stack real). Sin subir |
-| E2 — Pantallas (usuario y dueño) y «Reportar un problema» al buzón | **Hecho en local** (probado en el navegador). Sin subir |
-| E3 — Avisos (campana y correo a quien escribió) | Pendiente |
-| E4 — Producción (repo, CI, secretos, k8s, gateway, despliegue) | **Preparado** (CI, k8s, script de secretos, comandos). Falta que el dueño suba y probar en producción |
+| E1 — Servicio, base de datos, API, eventos, pruebas | **En producción** (2026-11-16) |
+| E2 — Pantallas (usuario y dueño) y «Reportar un problema» al buzón | **En producción** (2026-11-16) |
+| E3 — Avisos (campana y correo a quien escribió) | **Hecho en local** (probado en el navegador). Sin subir |
+| E4 — Producción (repo, CI, secretos, k8s, gateway, despliegue) | **En producción** (2026-11-16). Falta la prueba con la sesión del dueño |
 
 ## Decisiones del dueño (2026-11-16)
 
@@ -102,3 +102,19 @@ desmontaba la conversación abierta: ahora solo la primera carga muestra la rued
 puntos» quedaba encendido con el monto y otra respuesta los volvía a dar: la conversación se rearma limpia tras cada respuesta;
 (3) un reporte de problema chocaba con el tope de ideas (10/hora): los problemas tienen cupo aparte; (4) la respuesta de la plataforma
 salía con el texto teñido de azul (`bg-lightprimary`): fondo con el token y texto normal.
+
+**E4 (2026-11-16).** Subido con el chat. Dos tropiezos: el secreto `NODE_AUTH_TOKEN` de la organización había caducado (401 en
+`npm ci`): este CI baja `@facturero/outbox-relay` con `GITHUB_TOKEN`; y el parche sin contexto del gateway corrió una línea en su
+`k8s/deployment.yaml` (arreglado en un commit aparte). Comprobado en producción: migración, `/health`, y `/feedback` responde 401 sin
+token por `api.noahsolution.com`.
+
+**E3 (2026-11-16).** Tres proveedores en notification-service (`feedback.reply.created`, `feedback.item.status_changed`,
+`feedback.points.granted`, grupo `core.feedback`: no es un plugin del catálogo, la pantalla de preferencias lo trata como siempre
+activo). Campana a `userIds` (solo la autora, nunca quien actúa) y correo con la misma clase que Proyectos (`ProjectMailService` con
+otro contenido y otra plantilla, `feedback.notification.html`), pidiendo el correo a auth. Decisión: «Responder» del dueño suele traer
+respuesta, estado y puntos en un clic, así que el correo por defecto solo va con la respuesta (estado y puntos, solo campana; cada uno
+lo puede encender en sus preferencias). El gateway enlaza `feedback.#` y solo hace sonar la campana (nada a la sala de la
+organización). En la campana el estado dice cuál («Aceptamos tu propuesta») y los puntos «+50»; los eventos siguen sin textos.
+Verificado: 5 pruebas nuevas en notification-service y `subir-feedback/pruebas/feedback-avisos.mjs` en el navegador (campana en vivo
+sin recargar con los tres avisos, número en el menú del avatar, clic al envío, correo solo de la respuesta, grupo en preferencias,
+quien responde no recibe nada).
