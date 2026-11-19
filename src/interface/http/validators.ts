@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { ValidationError } from '../../domain/errors.js';
 import { FEEDBACK_KINDS, FEEDBACK_STATUSES, type FeedbackKind, type FeedbackStatus } from '../../domain/types.js';
 
-const uuid = z.string().uuid();
+const uuid = z.string().guid();
 const limit = (def: number, max: number) => z.preprocess((v) => (v === undefined || v === '' ? def : Number(v)), z.number().int().min(1).max(max));
 const kinds = z.enum(FEEDBACK_KINDS as unknown as [FeedbackKind, ...FeedbackKind[]]);
 const statuses = z.enum(FEEDBACK_STATUSES as unknown as [FeedbackStatus, ...FeedbackStatus[]]);
@@ -47,13 +47,13 @@ export const listAllSchema = z.object({
   limit: limit(30, 100),
 });
 
-export function parseWith<T>(schema: z.ZodType<T, z.ZodTypeDef, unknown>, value: unknown): T {
+export function parseWith<T>(schema: z.ZodType<T, unknown>, value: unknown): T {
   const r = schema.safeParse(value);
   if (!r.success) throw new ValidationError(r.error.issues.map((i) => ({ field: i.path.join('.') || 'body', message: i.message })));
   return r.data;
 }
 
-export async function parseBody<T>(c: Context, schema: z.ZodType<T, z.ZodTypeDef, unknown>): Promise<T> {
+export async function parseBody<T>(c: Context, schema: z.ZodType<T, unknown>): Promise<T> {
   let raw: unknown;
   try {
     raw = await c.req.json();
